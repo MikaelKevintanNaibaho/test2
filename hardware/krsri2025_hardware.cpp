@@ -24,13 +24,23 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
   }
 
-  // Resize vectors for joint states and commands
+   // Resize vectors for joint states and commands
   hw_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  // Add resizing for the new velocity command vector
   hw_velocity_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
+  // Read initial positions from parameters
+  for (std::size_t i = 0; i < info_.joints.size(); ++i) {
+    // The parameter name is "initial_positions.joint_name"
+    std::string initial_pos_param = "initial_positions." + info_.joints[i].name;
+    if (info_.hardware_parameters.count(initial_pos_param)) {
+      hw_positions_[i] = std::stod(info_.hardware_parameters.at(initial_pos_param));
+    } else {
+      // If not specified, default to 0
+      hw_positions_[i] = 0.0;
+    }
+  }
   for (const hardware_interface::ComponentInfo & joint : info_.joints) {
     // === UPDATE: Expect 2 command interfaces (position and velocity) ===
     if (joint.command_interfaces.size() != 2) {
@@ -84,7 +94,7 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
   for (std::size_t i = 0; i < hw_positions_.size(); i++) {
     hw_positions_[i] = 0.0;
     hw_velocities_[i] = 0.0;
-    hw_commands_[i] = 0.0;
+    hw_commands_[i] = hw_positions_[i];
     // === UPDATE: Initialize velocity commands as well ===
     hw_velocity_commands_[i] = 0.0;
   }
