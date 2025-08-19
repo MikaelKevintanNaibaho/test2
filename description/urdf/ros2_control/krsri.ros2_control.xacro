@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="krsri_ros2_control" params="name">
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+
+      <xacro:macro name="joint_interfaces" params="joint_name">
+        <joint name="${joint_name}">
+          <command_interface name="position">
+            <param name="min">${-2*M_PI}</param>
+            <param name="max">${2*M_PI}</param>
+          </command_interface>
+          <command_interface name="velocity">
+            <param name="min">${-3.15}</param> <param name="max">${3.15}</param>  </command_interface>
+          <state_interface name="position">
+            </state_interface>
+          <state_interface name="velocity"/>
+          </joint>
+      </xacro:macro>
+
+      <xacro:joint_interfaces joint_name="FL_coxa_link_joint"/>
+      <xacro:joint_interfaces joint_name="FR_coxa_link_joint"/>
+      <xacro:joint_interfaces joint_name="BR_coxa_link_joint"/>
+      <xacro:joint_interfaces joint_name="BL_coxa_link_joint"/>
+      <xacro:joint_interfaces joint_name="FL_femur_link_joint"/>
+      <xacro:joint_interfaces joint_name="FR_femur_link_joint"/>
+      <xacro:joint_interfaces joint_name="BR_femur_link_joint"/>
+      <xacro:joint_interfaces joint_name="BL_femur_link_joint"/>
+      <xacro:joint_interfaces joint_name="FL_tibia_link_joint"/>
+      <xacro:joint_interfaces joint_name="FR_tibia_link_joint"/>
+      <xacro:joint_interfaces joint_name="BR_tibia_link_joint"/>
+      <xacro:joint_interfaces joint_name="BL_tibia_link_joint"/>
+    </ros2_control>
+  </xacro:macro>
+</robot>

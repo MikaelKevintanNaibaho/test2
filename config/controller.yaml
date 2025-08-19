@@ -1,0 +1,40 @@
+# config/controller.yaml
+
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    # Definition for the Joint State Broadcaster
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Definition for your main robot controller
+    krsri_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+krsri_controller:
+  ros__parameters:
+    # List all the joints this controller will command
+    joints:
+      - FL_coxa_link_joint
+      - FR_coxa_link_joint
+      - BR_coxa_link_joint
+      - BL_coxa_link_joint
+      - FL_femur_link_joint
+      - FR_femur_link_joint
+      - BR_femur_link_joint
+      - BL_femur_link_joint
+      - FL_tibia_link_joint
+      - FR_tibia_link_joint
+      - BR_tibia_link_joint
+      - BL_tibia_link_joint
+
+    # Define the command interfaces (position and/or velocity)
+    command_interfaces:
+      - position
+      - velocity
+
+    # Define the state interfaces to be used
+    state_interfaces:
+      - position
+      - velocity

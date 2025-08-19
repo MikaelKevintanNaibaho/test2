@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+    <xacro:include filename="$(find krsri2025)/urdf/inc/create_link.xacro" />
+    <xacro:include filename="$(find krsri2025)/urdf/base/base.gazebo" />
+
+    <xacro:macro name="base_v0" params="parent *joint_origin">
+        <joint name="base_link_joint" type="fixed">
+            <parent link="${parent}" />
+            <child link="base_link" />
+        </joint>
+
+        <xacro:create_link link_name="base_link" xyz_offset="0 0 0"
+            xyz_inertial="2.00996e-05 -3.688e-06 0.0177006" rpy_offset="0.0 -0.0 0.0"
+            rpy_inertial="0 0 0" mass="0.2435530695931495" ixx="0.0005947728860841"
+            ixy="-4.89712998e-08" ixz="-3.98940258e-08" iyy="0.0010438537280735" iyz="7.3200047e-09"
+            izz="0.0015992215421099" mesh_package="krsri2025" mesh_name="base" />
+
+    </xacro:macro>
+</robot>

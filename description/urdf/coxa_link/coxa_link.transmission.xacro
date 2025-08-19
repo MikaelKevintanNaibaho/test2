@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:macro name="coxa_link_trans_v0" params="prefix">
+        <transmission name="${prefix}_coxa_link_trans">
+            <plugin>transmission_interface/SimpleTransmission</plugin>
+            <joint name="${prefix}_coxa_link_joint">
+                <role>joint</role>
+                <interface name="position">
+                    <command_interface name="position"/>
+                    <state_interface name="position"/>
+                </interface>
+                <interface name="velocity">
+                    <command_interface name="velocity"/>
+                    <state_interface name="velocity"/>
+                </interface>
+            </joint>
+            <actuator name="${prefix}_coxa_link_motor">
+                <role>actuator</role>
+                <mechanical_reduction>1</mechanical_reduction>
+            </actuator>
+        </transmission>
+    </xacro:macro>
+</robot>

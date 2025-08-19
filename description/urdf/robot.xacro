@@ -1,0 +1,248 @@
+<?xml version="1.0"?>
+<robot name="robot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+    <xacro:property name="M_PI" value="3.14159274" />
+
+    <xacro:include filename="$(find krsri2025)/urdf/base/base.xacro" />
+    <xacro:include filename="$(find krsri2025)/urdf/imu/imu.xacro" />
+    <xacro:include filename="$(find krsri2025)/urdf/coxa_link/coxa_link.xacro" />
+    <xacro:include filename="$(find krsri2025)/urdf/femur_link/femur_link.xacro" />
+    <xacro:include filename="$(find krsri2025)/urdf/tibia_link/tibia_link.xacro" />
+    <xacro:include filename="$(find krsri2025)/ros2_control/robot.ros2_control.xacro"/>
+    <xacro:include filename="$(find krsri2025)/urdf/gz/gz.xacro" />
+
+    <xacro:krsri_ros2_control name="KRSRI_2025_System"/>
+
+    <!-- ========== link and joint ============ -->
+    <!-- base-->
+    <link name="base_footprint" />
+    <xacro:base_v0 parent="base_footprint">
+        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    </xacro:base_v0>
+
+    <!-- Connect base_link to base_footprint -->
+    <joint name="base_footprint_joint" type="fixed">
+        <parent link="base_footprint"/>
+        <child link="base_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- coxa -->
+    <xacro:coxa_link_v0
+        parent="base_link"
+        prefix="FL"
+        rpy_offset="-3.138993086447196 1.5707963267948577 0.0025843521893154746"
+        xyz_offset="0.0445485 -1.60999e-08 -0.027225"
+        xyz_inertial="0.0634232 -0.000917728 -0.027225"
+        rpy_inertial="-3.139022626852083 1.5707963267948581 0.002606695191038495"
+        ixx="9.4679021587e-06" ixy="0.0" ixz="0.0" iyy="3.7474371854e-06" iyz="1.801230135e-07"
+        izz="6.9009389812e-06"
+        mass="0.0108197373416986">
+        <origin rpy="0.0 -0.0 3.141592653589793" xyz="-0.0829 -0.0648 0.0413" />
+        <axis xyz="0.0 0.0 1.0" />
+    </xacro:coxa_link_v0>
+
+
+    <xacro:coxa_link_v0
+        parent="base_link"
+        prefix="FR"
+        rpy_offset="-3.138993086447196 1.5707963267948577 0.0025843521893154746"
+        xyz_offset="0.0445485 -1.60999e-08 -0.027225"
+        xyz_inertial="0.0634232 -0.000917728 -0.027225"
+        rpy_inertial="-3.139022626852083 1.5707963267948581 0.002606695191038495"
+        ixx="9.4679021587e-06" ixy="0.0" ixz="0.0" iyy="3.7474371854e-06" iyz="1.801230135e-07"
+        izz="6.9009389812e-06"
+        mass="0.0108197373416986">
+        <origin rpy="0.0 0.0 0.0" xyz="-0.0832 0.0646 0.0417" />
+        <axis xyz="0.0 0.0 1.0" />
+    </xacro:coxa_link_v0>
+
+    <xacro:coxa_link_v0
+        parent="base_link"
+        prefix="BR"
+        rpy_offset="-3.138993086447196 1.5707963267948577 0.0025843521893154746"
+        xyz_offset="0.0445485 -1.60999e-08 -0.027225"
+        xyz_inertial="0.0634232 -0.000917728 -0.027225"
+        rpy_inertial="-3.139022626852083 1.5707963267948581 0.002606695191038495"
+        ixx="9.4679021587e-06" ixy="0.0" ixz="0.0" iyy="3.7474371854e-06" iyz="1.801230135e-07"
+        izz="6.9009389812e-06"
+        mass="0.0108197373416986">
+        <origin rpy="0.0 0.0 0.0" xyz="0.0829 0.0646 0.0417" />
+        <axis xyz="0.0 0.0 1.0" />
+    </xacro:coxa_link_v0>
+
+    <xacro:coxa_link_v0
+        parent="base_link"
+        prefix="BL"
+        rpy_offset="-3.138993086447196 1.5707963267948577 0.0025843521893154746"
+        xyz_offset="0.0445485 -1.60999e-08 -0.027225"
+        xyz_inertial="0.0634232 -0.000917728 -0.027225"
+        rpy_inertial="-3.139022626852083 1.5707963267948581 0.002606695191038495"
+        ixx="9.4679021587e-06" ixy="0.0" ixz="0.0" iyy="3.7474371854e-06" iyz="1.801230135e-07"
+        izz="6.9009389812e-06"
+        mass="0.0108197373416986">
+        <origin rpy="0.0 0.0 ${M_PI}" xyz="0.0828 -0.0649 0.0417" />
+        <axis xyz="0.0 0.0 1.0" />
+    </xacro:coxa_link_v0>
+
+    <xacro:femur_link_v0
+        parent="FL_coxa_link"
+        prefix="FL"
+        rpy_offset="0.0 1.2246467991473532e-16 -3.141592653589793"
+        xyz_offset="0.0409 -1e-17 -0.0326"
+        xyz_inertial="0.0409 -0.000614612 -0.0367939"
+        rpy_inertial="0.0 0.0 -3.141592653589793"
+        ixx="1.04525687572e-05" ixy="0.0" ixz="0.0" iyy="6.63975016385e-05" iyz="-3.301023405e-07"
+        izz="6.27040597382e-05"
+        mass="0.0556904648000365">
+        <origin rpy="${M_PI/2} ${-M_PI/2} ${M_PI}"
+            xyz="0.089097 0.027225 -0.027225" />
+        <axis xyz="0 0 1" />
+    </xacro:femur_link_v0>
+
+    <xacro:femur_link_v0
+        parent="FR_coxa_link"
+        prefix="FR"
+        rpy_offset="0.0 1.2246467991473532e-16 -3.141592653589793"
+        xyz_offset="0.0409 -1e-17 -0.0326"
+        xyz_inertial="0.0409 -0.000614612 -0.0367939"
+        rpy_inertial="0.0 0.0 -3.141592653589793"
+        ixx="1.04525687572e-05" ixy="0.0" ixz="0.0" iyy="6.63975016385e-05" iyz="-3.301023405e-07"
+        izz="6.27040597382e-05"
+        mass="0.0556904648000365">
+        <origin rpy="${M_PI/2} ${-M_PI/2} ${M_PI}"
+            xyz="0.089097 0.027225 -0.027225" />
+        <axis xyz="0 0 1" />
+    </xacro:femur_link_v0>
+
+    <xacro:femur_link_v0
+        parent="BR_coxa_link"
+        prefix="BR"
+        rpy_offset="0.0 1.2246467991473532e-16 -3.141592653589793"
+        xyz_offset="0.0409 -1e-17 -0.0326"
+        xyz_inertial="0.0409 -0.000614612 -0.0367939"
+        rpy_inertial="0.0 0.0 -3.141592653589793"
+        ixx="1.04525687572e-05" ixy="0.0" ixz="0.0" iyy="6.63975016385e-05" iyz="-3.301023405e-07"
+        izz="6.27040597382e-05"
+        mass="0.0556904648000365">
+        <origin rpy="${M_PI/2} ${-M_PI/2} ${M_PI}"
+            xyz="0.089097 0.027225 -0.027225" />
+        <axis xyz="0 0 1" />
+    </xacro:femur_link_v0>
+
+    <xacro:femur_link_v0
+        parent="BL_coxa_link"
+        prefix="BL"
+        rpy_offset="0.0 1.2246467991473532e-16 -3.141592653589793"
+        xyz_offset="0.0409 -1e-17 -0.0326"
+        xyz_inertial="0.0409 -0.000614612 -0.0367939"
+        rpy_inertial="0.0 0.0 -3.141592653589793"
+        ixx="1.04525687572e-05" ixy="0.0" ixz="0.0" iyy="6.63975016385e-05" iyz="-3.301023405e-07"
+        izz="6.27040597382e-05"
+        mass="0.0556904648000365">
+        <origin rpy="${M_PI/2} ${-M_PI/2} ${M_PI}"
+            xyz="0.089097 0.027225 -0.027225" />
+        <axis xyz="0 0 1" />
+    </xacro:femur_link_v0>
+
+    <xacro:tibia_link_v0
+        parent="FL_femur_link"
+        prefix="FL"
+        rpy_offset="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        xyz_offset="0.0673955 0.15882 -0.027225"
+        xyz_inertial="0.0366413 0.0594266 -0.0275903"
+        rpy_inertial="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        ixx="6.93465993198e-05" ixy="1.337658191e-07" ixz="6.102521657e-07" iyy="7.87462488973e-05"
+        iyz="-3.9937390341e-06" izz="1.3325052442e-05"
+        mass="0.0270130264684768">
+        <origin rpy="0 0 ${-M_PI/2}"
+            xyz="0.0818 -7.74e-17 7.1e-18" />
+        <axis xyz="0 0 1" />
+    </xacro:tibia_link_v0>
+
+    <xacro:tibia_link_v0
+        parent="FR_femur_link"
+        prefix="FR"
+        rpy_offset="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        xyz_offset="0.0673955 0.15882 -0.027225"
+        xyz_inertial="0.0366413 0.0594266 -0.0275903"
+        rpy_inertial="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        ixx="6.93465993198e-05" ixy="1.337658191e-07" ixz="6.102521657e-07" iyy="7.87462488973e-05"
+        iyz="-3.9937390341e-06" izz="1.3325052442e-05"
+        mass="0.0270130264684768">
+        <origin rpy="0 0 ${-M_PI/2}"
+            xyz="0.0818 -7.74e-17 7.1e-18" />
+        <axis xyz="0 0 1" />
+    </xacro:tibia_link_v0>
+
+    <xacro:tibia_link_v0
+        parent="BR_femur_link"
+        prefix="BR"
+        rpy_offset="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        xyz_offset="0.0673955 0.15882 -0.027225"
+        xyz_inertial="0.0366413 0.0594266 -0.0275903"
+        rpy_inertial="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        ixx="6.93465993198e-05" ixy="1.337658191e-07" ixz="6.102521657e-07" iyy="7.87462488973e-05"
+        iyz="-3.9937390341e-06" izz="1.3325052442e-05"
+        mass="0.0270130264684768">
+        <origin rpy="0 0 ${-M_PI/2}"
+            xyz="0.0818 -7.74e-17 7.1e-18" />
+        <axis xyz="0 0 1" />
+    </xacro:tibia_link_v0>
+
+    <xacro:tibia_link_v0
+        parent="BL_femur_link"
+        prefix="BL"
+        rpy_offset="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        xyz_offset="0.0673955 0.15882 -0.027225"
+        xyz_inertial="0.0366413 0.0594266 -0.0275903"
+        rpy_inertial="1.5864404220141486 -1.5707963267948541 -0.28945027597681705"
+        ixx="6.93465993198e-05" ixy="1.337658191e-07" ixz="6.102521657e-07" iyy="7.87462488973e-05"
+        iyz="-3.9937390341e-06" izz="1.3325052442e-05"
+        mass="0.0270130264684768">
+        <origin rpy="0 0 ${-M_PI/2}"
+            xyz="0.0818 -7.74e-17 7.1e-18" />
+        <axis xyz="0 0 1" />
+    </xacro:tibia_link_v0>
+
+    <!-- IMU-->
+    <xacro:imu_v0 parent="base_link">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+    </xacro:imu_v0>
+
+    <!-- ======== Transmission ====== -->
+    <xacro:coxa_link_trans_v0 prefix="FL" />
+    <xacro:coxa_link_trans_v0 prefix="FR"/>
+    <xacro:coxa_link_trans_v0 prefix="BR"/>
+    <xacro:coxa_link_trans_v0 prefix="BL"/>
+
+
+    <xacro:femur_link_trans_v0 prefix="FL"/>
+    <xacro:femur_link_trans_v0 prefix="FR"/>
+    <xacro:femur_link_trans_v0 prefix="BR"/>
+    <xacro:femur_link_trans_v0 prefix="BL"/>
+
+    <xacro:tibia_link_trans_v0 prefix="FL"/>
+    <xacro:tibia_link_trans_v0 prefix="FR"/>
+    <xacro:tibia_link_trans_v0 prefix="BR"/>
+    <xacro:tibia_link_trans_v0 prefix="BL"/>
+
+
+    <xacro:base_gazebo_v0/>
+    <xacro:coxa_link_gazebo_v0 prefix="FL"/>
+    <xacro:coxa_link_gazebo_v0 prefix="FR"/>
+    <xacro:coxa_link_gazebo_v0 prefix="BR"/>
+    <xacro:coxa_link_gazebo_v0 prefix="BL"/>
+    <xacro:femur_link_gazebo_v0 prefix="FL"/>
+    <xacro:femur_link_gazebo_v0 prefix="FR"/>
+    <xacro:femur_link_gazebo_v0 prefix="BR"/>
+    <xacro:femur_link_gazebo_v0 prefix="BL"/>
+    <xacro:tibia_link_gazebo_v0 prefix="FL"/>
+    <xacro:tibia_link_gazebo_v0 prefix="FR"/>
+    <xacro:tibia_link_gazebo_v0 prefix="BR"/>
+    <xacro:tibia_link_gazebo_v0 prefix="BL"/>
+    <xacro:imu_gazebo_v0 />
+
+
+
+</robot>

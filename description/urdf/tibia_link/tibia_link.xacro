@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+    <xacro:include filename="$(find krsri2025)/urdf/inc/create_link.xacro" />
+    <xacro:include
+        filename="$(find krsri2025)/urdf/tibia_link/tibia_link.transmission.xacro" />
+    <xacro:include filename="$(find krsri2025)/urdf/tibia_link/tibia_link.gazebo" />
+
+    <xacro:macro name="tibia_link_v0"
+        params="
+    parent
+    prefix 
+    xyz_offset
+    rpy_offset 
+    xyz_inertial 
+    rpy_inertial
+    mass
+    ixx
+    ixy
+    ixz
+    iyy
+    iyz
+    izz
+    *joint_origin
+    *joint_axis">
+        <joint name="${prefix}_tibia_link_joint" type="revolute">
+            <xacro:insert_block name="joint_origin" />
+            <parent link="${parent}" />
+            <child link="${prefix}_tibia_link" />
+            <limit lower="0" upper="${M_PI}" effort="50.0"
+                velocity="10.0" />
+            <dynamics damping="0.0005" friction="0.1" />
+            <xacro:insert_block name="joint_axis" />
+        </joint>
+
+        <xacro:create_link link_name="${prefix}_tibia_link" xyz_offset="${xyz_offset}"
+            xyz_inertial="${xyz_inertial}"
+            rpy_offset="${rpy_offset}" rpy_inertial="${rpy_inertial}" mass="${mass}" ixx="${ixx}"
+            ixy="${ixy}"
+            ixz="${ixz}" iyy="${iyy}" iyz="${iyz}"
+            izz="${izz}" mesh_package="krsri2025" mesh_name="tibia" />
+    </xacro:macro>
+</robot>

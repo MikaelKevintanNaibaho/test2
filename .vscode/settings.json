@@ -1,0 +1,29 @@
+{
+    "ros.distro": "jazzy",
+    "urdf-visualizer.packages": {
+      "krsri2025": "~/ros2_krsri_ws/src/krsri2025"
+    },
+    "python.autoComplete.extraPaths": [
+      "/home/mikael/ros2_ws/install/moveit_task_constructor_core/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_task_constructor_msgs/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_py/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_msgs/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_configs_utils/lib/python3.12/site-packages",
+      "/home/mikael/ws_moveit2/install/moveit_py/lib/python3.12/site-packages",
+      "/home/mikael/ws_moveit2/install/moveit_msgs/lib/python3.12/site-packages",
+      "/home/mikael/ws_moveit2/install/moveit_configs_utils/lib/python3.12/site-packages",
+      "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+      "/home/mikael/ros2_ws/install/moveit_task_constructor_core/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_task_constructor_msgs/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_py/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_msgs/lib/python3.12/site-packages",
+      "/home/mikael/ros2_ws/install/moveit_configs_utils/lib/python3.12/site-packages",
+      "/home/mikael/ws_moveit2/install/moveit_py/lib/python3.12/site-packages",
+      "/home/mikael/ws_moveit2/install/moveit_msgs/lib/python3.12/site-packages",
+      "/home/mikael/ws_moveit2/install/moveit_configs_utils/lib/python3.12/site-packages",
+      "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true
+}
