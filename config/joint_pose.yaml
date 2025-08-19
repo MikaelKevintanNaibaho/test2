@@ -8,9 +8,9 @@
         FR_coxa_link_joint: 2.35619
         FR_femur_link_joint: 0.785398
         FR_tibia_link_joint: 2.53073
-        BL_coxa_link_joint: 0.785398
+        BL_coxa_link_joint: 2.35619
         BL_femur_link_joint: 0.785398
         BL_tibia_link_joint: 2.53073
-        BR_coxa_link_joint: 2.35619
+        BR_coxa_link_joint: 0.785398
         BR_femur_link_joint: 0.785398
         BR_tibia_link_joint: 2.53073

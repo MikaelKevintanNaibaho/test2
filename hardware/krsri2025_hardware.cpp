@@ -90,13 +90,13 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
 rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotSystem::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // Reset values when configuring hardware
-  for (std::size_t i = 0; i < hw_positions_.size(); i++) {
-    hw_positions_[i] = 0.0;
-    hw_velocities_[i] = 0.0;
-    hw_commands_[i] = hw_positions_[i];
-    // === UPDATE: Initialize velocity commands as well ===
-    hw_velocity_commands_[i] = 0.0;
+  auto node = std::make_shared<rclcpp::Node>("temp_param_node");
+  for (std::size_t i = 0; i < info_.joints.size(); ++i) {
+    std::string param_name = "krsri_controller.initial_positions." + info_.joints[i].name;
+    if (node->has_parameter(param_name)) {
+      hw_positions_[i] = node->get_parameter(param_name).as_double();
+      hw_commands_[i] = hw_positions_[i]; // Update command too
+    }
   }
 
   RCLCPP_INFO(rclcpp::get_logger("RobotSystem"), "Successfully configured!");

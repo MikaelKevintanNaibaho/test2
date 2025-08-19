@@ -4,6 +4,23 @@
         <ros2_control name="${name}" type="system">
             <hardware>
                 <plugin>krsri2025/RobotSystem</plugin>
+                
+                <!-- Add these parameter tags for each joint's initial position -->
+                <param name="initial_positions.FL_coxa_link_joint">0.785398</param>
+                <param name="initial_positions.FL_femur_link_joint">0.785398</param>
+                <param name="initial_positions.FL_tibia_link_joint">2.53073</param>
+                
+                <param name="initial_positions.FR_coxa_link_joint">2.35619</param>
+                <param name="initial_positions.FR_femur_link_joint">0.785398</param>
+                <param name="initial_positions.FR_tibia_link_joint">2.53073</param>
+                
+                <param name="initial_positions.BR_coxa_link_joint">0.785398</param>
+                <param name="initial_positions.BR_femur_link_joint">0.785398</param>
+                <param name="initial_positions.BR_tibia_link_joint">2.53073</param>
+                
+                <param name="initial_positions.BL_coxa_link_joint">2.35619</param>
+                <param name="initial_positions.BL_femur_link_joint">0.785398</param>
+                <param name="initial_positions.BL_tibia_link_joint">2.53073</param>
             </hardware>
             
             <!-- Front Left Leg -->
