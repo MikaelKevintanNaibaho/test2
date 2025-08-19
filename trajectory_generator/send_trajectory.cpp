@@ -9,6 +9,7 @@
 
 #include "foot_trajectory.hpp"
 
+// Struct to hold the joint angles for a single leg.
 struct LegJoints
 {
   double coxa;
@@ -16,7 +17,77 @@ struct LegJoints
   double tibia;
 };
 
-int main(int argc, char ** argv)
+// Struct to hold the gait parameters.
+struct GaitParams
+{
+  double total_gait_time;
+  double step_length;
+  double swing_height;
+  int trajectory_points;
+  double dt;
+};
+
+// class for the trajectory generator
+class TrajectoryGeneratorNode : public rclcpp::Node
+{
+public:
+  TrajectoryGeneratorNode() : Node("send_trajectory")
+  {
+    pub_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
+      "krsri_controller/joint_trajectory", 10);
+
+    loadGaitParams();
+    initializeKinematics();
+    generateAndPublishTrajectory();
+  }
+
+private:
+  void loadGaitParams()
+  {
+    this->declare_parameter("gait.total_gait_time", 1.0);
+    this->declare_parameter("gait.step_length", 0.1);
+    this->delcare_parameter("gait.swing_height", 0, 1);
+    this->declare_parameter("gait.trajectory_points", 100);
+
+    gait_params_.total_gait_time = this->get_parameter("gait.total_gait_time").as_double();
+    gait_params_.step_length = this->get_parameter("gait.step_length").as_double();
+    gait_params_.swing_height = this->get_parameter("gait.swing_height").as_double();
+    gait.params_.trajectory_points = this->get_parameter("gait.trajectory_points").as_int();
+    gait_params_.dt =
+      dait_params_.total_gait_time / static_cast<double>(gait_params_.trajectory_points - 1);
+  }
+
+  void initializeKinematics()
+  {
+    std::string robot_description;
+    if (!this->get_parameter("robot_description", robot_description)) {
+      RCLCPP_ERROR(this->get_logger(), "robot_description parameter not set. shutting down.");
+      rclcpp::shutdown();
+      return;
+    }
+
+    KDL::Tree robot_tree;
+    if (!kdl_parser::treeFromString(robot_description, robot_tree)) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to build KDL tree");
+      rclcpp::shutdown();
+      return;
+    }
+
+    for (const auto & prefix : leg_prefixes_) {
+      std::string tip_link = prefix + "_tibia_link";
+      KDL::Chain chain;
+      if (!robot_tree.getChain(base_link_, tip_link, chain)) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to get KDL chain for leg %s", prefix.c_str());
+        rclcpp::shutdown();
+        return;
+      }
+      chains_[prefix] = chain;
+      ik_solver_[prefix] = std::make_shared<KDL::ChainIkSolverVel_pinv>(chains_[prefix]);
+      fk_solvers_[prefix] = std::make_shared<KDL::ChainFkSolverPos_recursive>(chains_[prefix]);
+    }
+  }
+
+} int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("send_trajectory");
@@ -114,9 +185,9 @@ int main(int argc, char ** argv)
 
   // Populate joint names in correct order
   for (const auto & prefix : leg_prefixes) {
-    trajectory_msg.joint_names.push_back(prefix + "_coxa_joint");
-    trajectory_msg.joint_names.push_back(prefix + "_femur_joint");
-    trajectory_msg.joint_names.push_back(prefix + "_tibia_joint");
+    trajectory_msg.joint_names.push_back(prefix + "_coxa_link_joint");
+    trajectory_msg.joint_names.push_back(prefix + "_femur_link_joint");
+    trajectory_msg.joint_names.push_back(prefix + "_tibia_link_joint");
   }
 
   RCLCPP_INFO(node->get_logger(), "Generating trot gait with %d points", trajectory_points);
