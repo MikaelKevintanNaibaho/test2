@@ -2,8 +2,8 @@ send_trajectory:
   ros__parameters:
     gait:
       total_gait_time: 1.0
-      step_length: 0.01
-      swing_height: 0.01
+      step_length: 0.4
+      swing_height: -0.2
       trajectory_points: 100
 
     default_stance:

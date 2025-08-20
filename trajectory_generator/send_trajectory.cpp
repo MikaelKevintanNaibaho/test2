@@ -289,14 +289,5 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
   auto node = std::make_shared<TrajectoryGeneratorNode>();
 
-  // If initialization failed and initializeKinematics() called rclcpp::shutdown(),
-  // rclcpp::ok() will be false. Avoid spinning on an invalid context.
-  if (rclcpp::ok()) {
-    rclcpp::spin(node);
-  } else {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("send_trajectory"), "ROS context not OK after node init; exiting.");
-  }
-
   return 0;
 }
