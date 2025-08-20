@@ -66,11 +66,6 @@ private:
   // Loads all necessary gait parameters from the ROS parameter server.
   void loadGaitParams()
   {
-    this->declare_parameter("gait.total_gait_time", 1.0);
-    this->declare_parameter("gait.step_length", 0.1);
-    this->declare_parameter("gait.swing_height", 0.1);
-    this->declare_parameter("gait.trajectory_points", 100);
-
     gait_params_.total_gait_time = this->get_parameter("gait.total_gait_time").as_double();
     gait_params_.step_length = this->get_parameter("gait.step_length").as_double();
     gait_params_.swing_height = this->get_parameter("gait.swing_height").as_double();
@@ -178,9 +173,6 @@ private:
     std::map<std::string, LegJoints> default_joints;
     for (const auto & prefix : leg_prefixes_) {
       std::string ns = "default_stance." + prefix;
-      this->declare_parameter(ns + ".coxa", 0.0);
-      this->declare_parameter(ns + ".femur", 0.0);
-      this->declare_parameter(ns + ".tibia", 0.0);
 
       LegJoints joints;
       this->get_parameter(ns + ".coxa", joints.coxa);
