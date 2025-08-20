@@ -31,8 +31,19 @@ struct GaitParams
 class TrajectoryGeneratorNode : public rclcpp::Node
 {
 public:
-  TrajectoryGeneratorNode() : Node("send_trajectory")
+  TrajectoryGeneratorNode()
+  : Node(
+      "send_trajectory",
+      rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
   {
+    // Now, safely get the parameter
+    if (!this->get_parameter("robot_description", robot_description_)) {
+      RCLCPP_ERROR(this->get_logger(), "robot_description parameter not set. Shutting down.");
+      // Properly shut down the node
+      rclcpp::shutdown();
+      return;
+    }
+    RCLCPP_INFO(this->get_logger(), "Successfully received robot_description.");
     // Initializes the publisher for the joint trajectory messages.
     pub_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       "krsri_controller/joint_trajectory", 10);
@@ -94,7 +105,8 @@ private:
         return;
       }
       chains_[prefix] = chain;
-      ik_solvers_[prefix] = std::make_shared<KDL::ChainIkSolverVel_pinv>(chains_[prefix]);
+      ik_solvers_[prefix] =
+        std::make_shared<KDL::ChainIkSolverVel_pinv>(chains_[prefix], 0.0000001);
       fk_solvers_[prefix] = std::make_shared<KDL::ChainFkSolverPos_recursive>(chains_[prefix]);
     }
   }
@@ -220,9 +232,9 @@ private:
   void populateJointNames(trajectory_msgs::msg::JointTrajectory & trajectory_msg)
   {
     for (const auto & prefix : leg_prefixes_) {
-      trajectory_msg.joint_names.push_back(prefix + "_coxa_joint");
-      trajectory_msg.joint_names.push_back(prefix + "_femur_joint");
-      trajectory_msg.joint_names.push_back(prefix + "_tibia_joint");
+      trajectory_msg.joint_names.push_back(prefix + "_coxa_link_joint");
+      trajectory_msg.joint_names.push_back(prefix + "_femur_link_joint");
+      trajectory_msg.joint_names.push_back(prefix + "_tibia_link_joint");
     }
   }
 
@@ -261,6 +273,7 @@ private:
   }
 
   // Member Variables
+  std::string robot_description_;
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr pub_;
   GaitParams gait_params_;
   std::vector<std::string> leg_prefixes_ = {"FL", "FR", "BL", "BR"};
@@ -280,9 +293,9 @@ int main(int argc, char ** argv)
   // rclcpp::ok() will be false. Avoid spinning on an invalid context.
   if (rclcpp::ok()) {
     rclcpp::spin(node);
-    rclcpp::shutdown();
   } else {
-    RCLCPP_ERROR(rclcpp::get_logger("send_trajectory"), "ROS context not OK after node init; exiting.");
+    RCLCPP_ERROR(
+      rclcpp::get_logger("send_trajectory"), "ROS context not OK after node init; exiting.");
   }
 
   return 0;
