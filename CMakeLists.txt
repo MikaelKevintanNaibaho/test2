@@ -110,7 +110,6 @@ install(
   FILES
     config/controller.yaml
     config/trajectory_params.yaml
-    config/joint_pose.yaml
   DESTINATION share/krsri2025/config
 )
 
