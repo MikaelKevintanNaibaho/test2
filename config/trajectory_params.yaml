@@ -16,10 +16,10 @@ send_trajectory:
         femur: 0.785398
         tibia: 2.53073
       BL:
-        coxa: 0.785398
+        coxa: 2.35619
         femur: 0.785398
         tibia: 2.53073
       BR:
-        coxa: 2.35619
+        coxa: 0.785398
         femur: 0.785398
         tibia: 2.53073
