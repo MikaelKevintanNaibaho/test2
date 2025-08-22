@@ -49,6 +49,8 @@ foreach(Dependency IN ITEMS ${CONTROLLER_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
+find_package(visualization_msgs REQUIRED)
+
 # compile
 add_executable(send_trajectory
   trajectory_generator/send_trajectory.cpp
@@ -59,6 +61,7 @@ target_link_libraries(send_trajectory PUBLIC
   ${trajectory_msgs_TARGETS}
   kdl_parser::kdl_parser
   rclcpp::rclcpp
+  ${visualization_msgs_TARGETS}
 )
 
 target_include_directories(send_trajectory PRIVATE

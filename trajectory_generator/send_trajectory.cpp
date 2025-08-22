@@ -6,6 +6,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "foot_trajectory.hpp"
 
@@ -47,6 +48,9 @@ public:
     // Initializes the publisher for the joint trajectory messages.
     pub_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       "krsri_controller/joint_trajectory", 10);
+
+    marker_pub_ =
+      this->create_publisher<visualization_msgs::msg::MarkerArray>("foot_swing_markers", 10);
 
     // Load parameters, initialize kinematics, and generate the trajectory.
     loadGaitParams();
@@ -92,7 +96,7 @@ private:
     }
 
     for (const auto & prefix : leg_prefixes_) {
-      std::string tip_link = prefix + "_tibia_link";
+      std::string tip_link = prefix + "_end_effector_link";
       KDL::Chain chain;
       if (!robot_tree.getChain(base_link_, tip_link, chain)) {
         RCLCPP_ERROR(this->get_logger(), "Failed to get KDL chain for leg %s", prefix.c_str());
@@ -121,6 +125,7 @@ private:
 
     RCLCPP_INFO(
       this->get_logger(), "Generating trot gait with %d points", gait_params_.trajectory_points);
+    std::map<std::string, std::vector<geometry_msgs::msg::Point>> leg_paths;
 
     // Main trajectory generation loop
     for (int i = 0; i < gait_params_.trajectory_points; i++) {
@@ -142,7 +147,7 @@ private:
         if (is_swing_leg) {
           processSwingLeg(
             prefix, current_time, is_phase_one, current_joint_pos, joint_velocities,
-            default_foot_positions);
+            default_foot_positions, leg_paths);
         } else {
           processStanceLeg(joint_velocities);
         }
@@ -158,6 +163,7 @@ private:
       point.velocities = all_velocities;
       trajectory_msg.points.push_back(point);
     }
+    publishTrajectoryMarkers(leg_paths);
 
     // Publish the complete trajectory
     RCLCPP_INFO(this->get_logger(), "Publishing trajectory for all legs");
@@ -265,7 +271,8 @@ private:
   void processSwingLeg(
     const std::string & prefix, double current_time, bool is_phase_one,
     KDL::JntArray & current_joint_pos, KDL::JntArray & joint_velocities,
-    const std::map<std::string, Vec3<double>> & default_foot_positions)
+    const std::map<std::string, Vec3<double>> & default_foot_positions,
+    std::map<std::string, std::vector<geometry_msgs::msg::Point>> & leg_paths)
   {
     double phase_time =
       is_phase_one ? current_time : (current_time - gait_params_.total_gait_time / 2.0);
@@ -280,9 +287,17 @@ private:
     trajectory.setHeight(gait_params_.swing_height);
     trajectory.computeSwingTrajectoryBezier(swing_phase, gait_params_.total_gait_time / 2.0);
 
+    Vec3<double> cart_pos_vec = trajectory.getPosition();
     Vec3<double> cart_vel_vec = trajectory.getVelocity();
     KDL::Twist cart_twist(
       KDL::Vector(cart_vel_vec[0], cart_vel_vec[1], cart_vel_vec[2]), KDL::Vector::Zero());
+
+    // NEW: Store the calculated cartesian point
+    geometry_msgs::msg::Point p;
+    p.x = cart_pos_vec[0];
+    p.y = cart_pos_vec[1];
+    p.z = cart_pos_vec[2];
+    leg_paths[prefix].push_back(p);
 
     ik_solvers_[prefix]->CartToJnt(current_joint_pos, cart_twist, joint_velocities);
   }
@@ -295,9 +310,54 @@ private:
     }
   }
 
+  void publishTrajectoryMarkers(
+    const std::map<std::string, std::vector<geometry_msgs::msg::Point>> & leg_paths)
+  {
+    visualization_msgs::msg::MarkerArray marker_array;
+    int id = 0;
+
+    // Define colors for each leg
+    std::map<std::string, std::array<float, 3>> colors;
+    colors["FL"] = {1.0, 0.0, 0.0};  // Red
+    colors["FR"] = {0.0, 1.0, 0.0};  // Green
+    colors["BL"] = {0.0, 0.0, 1.0};  // Blue
+    colors["BR"] = {1.0, 1.0, 0.0};  // Yellow
+
+    for (const auto & pair : leg_paths) {
+      const auto & prefix = pair.first;
+      const auto & path_points = pair.second;
+
+      if (path_points.empty()) continue;
+
+      visualization_msgs::msg::Marker marker;
+      marker.header.frame_id = base_link_;
+      marker.header.stamp = this->now();
+      marker.ns = "foot_paths";
+      marker.id = id++;
+      marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      marker.action = visualization_msgs::msg::Marker::ADD;
+
+      marker.pose.orientation.w = 1.0;
+      marker.scale.x = 0.01;  // Line width
+
+      marker.color.r = colors[prefix][0];
+      marker.color.g = colors[prefix][1];
+      marker.color.b = colors[prefix][2];
+      marker.color.a = 1.0;  // Opacity
+
+      marker.points = path_points;
+      marker_array.markers.push_back(marker);
+    }
+
+    RCLCPP_INFO(
+      this->get_logger(), "Publishing %zu trajectory markers.", marker_array.markers.size());
+    marker_pub_->publish(marker_array);
+  }
+
   // Member Variables
   std::string robot_description_;
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   GaitParams gait_params_;
   std::vector<std::string> leg_prefixes_ = {"FL", "FR", "BL", "BR"};
   std::string base_link_ = "base_link";
