@@ -171,14 +171,30 @@ private:
   std::map<std::string, LegJoints> loadDefaultJoints()
   {
     std::map<std::string, LegJoints> default_joints;
+    RCLCPP_INFO(this->get_logger(), "Loading default joint positions for all legs...");
     for (const auto & prefix : leg_prefixes_) {
       std::string ns = "default_stance." + prefix;
-
       LegJoints joints;
-      this->get_parameter(ns + ".coxa", joints.coxa);
-      this->get_parameter(ns + ".femur", joints.femur);
-      this->get_parameter(ns + ".tibia", joints.tibia);
-      default_joints[prefix] = joints;
+
+      // Use a flag to track if all params for a leg are found
+      bool success = true;
+      success &= this->get_parameter(ns + ".coxa", joints.coxa);
+      success &= this->get_parameter(ns + ".femur", joints.femur);
+      success &= this->get_parameter(ns + ".tibia", joints.tibia);
+
+      if (success) {
+        RCLCPP_INFO(
+          this->get_logger(), "Successfully loaded for %s: coxa=%.6f, femur=%.6f, tibia=%.6f",
+          prefix.c_str(), joints.coxa, joints.femur, joints.tibia);
+        default_joints[prefix] = joints;
+      } else {
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "Failed to load one or more default stance parameters for leg prefix: %s",
+          prefix.c_str());
+        // Shut down to prevent running with incorrect initial positions
+        rclcpp::shutdown();
+      }
     }
     return default_joints;
   }
@@ -188,12 +204,27 @@ private:
     const std::map<std::string, LegJoints> & default_joints)
   {
     std::map<std::string, KDL::JntArray> joint_positions;
+    RCLCPP_INFO(this->get_logger(), "Initializing KDL joint arrays from loaded defaults...");
     for (const auto & prefix : leg_prefixes_) {
-      const auto & joints = default_joints.at(prefix);
-      joint_positions[prefix] = KDL::JntArray(3);
-      joint_positions[prefix](0) = joints.coxa;
-      joint_positions[prefix](1) = joints.femur;
-      joint_positions[prefix](2) = joints.tibia;
+      // Find the joints for the current leg prefix
+      auto it = default_joints.find(prefix);
+      if (it != default_joints.end()) {
+        const auto & joints = it->second;
+        joint_positions[prefix] = KDL::JntArray(3);
+        joint_positions[prefix](0) = joints.coxa;
+        joint_positions[prefix](1) = joints.femur;
+        joint_positions[prefix](2) = joints.tibia;
+
+        // Add detailed logging to confirm the values being set
+        RCLCPP_INFO(
+          this->get_logger(), "KDL JntArray for '%s' initialized to: [%f, %f, %f]", prefix.c_str(),
+          joint_positions[prefix](0), joint_positions[prefix](1), joint_positions[prefix](2));
+      } else {
+        RCLCPP_ERROR(
+          this->get_logger(), "Could not find default joints for leg prefix '%s' in the map.",
+          prefix.c_str());
+        rclcpp::shutdown();
+      }
     }
     return joint_positions;
   }

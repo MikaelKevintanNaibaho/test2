@@ -12,19 +12,18 @@
 
 namespace krsri2025
 {
-// In your krsri2025_hardware.hpp file, make sure to add the new vector for velocity commands:
-// std::vector<double> hw_velocity_commands_;
 
 rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotSystem::on_init(
-  const hardware_interface::HardwareInfo & info)
+  const hardware_interface::HardwareComponentInterfaceParams & params)
 {
+  // Call the base class on_init first
   if (
-    hardware_interface::SystemInterface::on_init(info) !=
+    hardware_interface::SystemInterface::on_init(params) !=
     rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS) {
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
   }
 
-   // Resize vectors for joint states and commands
+  // Resize vectors for joint states and commands
   hw_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_velocity_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
@@ -41,12 +40,13 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
       hw_positions_[i] = 0.0;
     }
   }
+
   for (const hardware_interface::ComponentInfo & joint : info_.joints) {
     // === UPDATE: Expect 2 command interfaces (position and velocity) ===
     if (joint.command_interfaces.size() != 2) {
       RCLCPP_FATAL(
-        rclcpp::get_logger("RobotSystem"), "Joint '%s' has %zu command interfaces. 2 expected.",
-        joint.name.c_str(), joint.command_interfaces.size());
+        get_logger(), "Joint '%s' has %zu command interfaces. 2 expected.", joint.name.c_str(),
+        joint.command_interfaces.size());
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
@@ -64,22 +64,22 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
 
     if (!has_position_command_interface) {
       RCLCPP_FATAL(
-        rclcpp::get_logger("RobotSystem"), "Joint '%s' is missing '%s' command interface.",
-        joint.name.c_str(), hardware_interface::HW_IF_POSITION);
+        get_logger(), "Joint '%s' is missing '%s' command interface.", joint.name.c_str(),
+        hardware_interface::HW_IF_POSITION);
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
     if (!has_velocity_command_interface) {
       RCLCPP_FATAL(
-        rclcpp::get_logger("RobotSystem"), "Joint '%s' is missing '%s' command interface.",
-        joint.name.c_str(), hardware_interface::HW_IF_VELOCITY);
+        get_logger(), "Joint '%s' is missing '%s' command interface.", joint.name.c_str(),
+        hardware_interface::HW_IF_VELOCITY);
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
     // Verify we have position and velocity state interfaces (this part remains the same)
     if (joint.state_interfaces.size() != 2) {
       RCLCPP_FATAL(
-        rclcpp::get_logger("RobotSystem"), "Joint '%s' has %zu state interface. 2 expected.",
-        joint.name.c_str(), joint.state_interfaces.size());
+        get_logger(), "Joint '%s' has %zu state interface. 2 expected.", joint.name.c_str(),
+        joint.state_interfaces.size());
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
   }
@@ -90,41 +90,53 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
 rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotSystem::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  auto node = std::make_shared<rclcpp::Node>("temp_param_node");
-  for (std::size_t i = 0; i < info_.joints.size(); ++i) {
-    std::string param_name = "krsri_controller.initial_positions." + info_.joints[i].name;
-    if (node->has_parameter(param_name)) {
-      hw_positions_[i] = node->get_parameter(param_name).as_double();
-      hw_commands_[i] = hw_positions_[i]; // Update command too
+  // Use the node provided by the framework instead of creating a temporary one
+  if (auto node = get_node()) {
+    for (std::size_t i = 0; i < info_.joints.size(); ++i) {
+      std::string param_name = "krsri_controller.initial_positions." + info_.joints[i].name;
+      if (node->has_parameter(param_name)) {
+        hw_positions_[i] = node->get_parameter(param_name).as_double();
+        hw_commands_[i] = hw_positions_[i];  // Update command too
+      }
     }
   }
 
-  RCLCPP_INFO(rclcpp::get_logger("RobotSystem"), "Successfully configured!");
+  RCLCPP_INFO(get_logger(), "Successfully configured!");
 
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface> RobotSystem::export_state_interfaces()
+std::vector<hardware_interface::StateInterface::ConstSharedPtr>
+RobotSystem::on_export_state_interfaces()
 {
-  std::vector<hardware_interface::StateInterface> state_interfaces;
+  std::vector<hardware_interface::StateInterface::ConstSharedPtr> state_interfaces;
+
   for (std::size_t i = 0; i < info_.joints.size(); i++) {
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_positions_[i]));
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_velocities_[i]));
+    // Create state interfaces using the new method
+    auto position_state = std::make_shared<hardware_interface::StateInterface>(
+      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_positions_[i]);
+    auto velocity_state = std::make_shared<hardware_interface::StateInterface>(
+      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_velocities_[i]);
+
+    state_interfaces.push_back(
+      std::const_pointer_cast<const hardware_interface::StateInterface>(position_state));
+    state_interfaces.push_back(
+      std::const_pointer_cast<const hardware_interface::StateInterface>(velocity_state));
   }
 
   return state_interfaces;
 }
 
-std::vector<hardware_interface::CommandInterface> RobotSystem::export_command_interfaces()
+std::vector<hardware_interface::CommandInterface::SharedPtr>
+RobotSystem::on_export_command_interfaces()
 {
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
+  std::vector<hardware_interface::CommandInterface::SharedPtr> command_interfaces;
+
   for (std::size_t i = 0; i < info_.joints.size(); i++) {
     // === UPDATE: Export both position and velocity command interfaces ===
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
+    command_interfaces.emplace_back(std::make_shared<hardware_interface::CommandInterface>(
       info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_commands_[i]));
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
+    command_interfaces.emplace_back(std::make_shared<hardware_interface::CommandInterface>(
       info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_velocity_commands_[i]));
   }
 
@@ -145,7 +157,7 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
     }
   }
 
-  RCLCPP_INFO(rclcpp::get_logger("RobotSystem"), "Successfully activated!");
+  RCLCPP_INFO(get_logger(), "Successfully activated!");
 
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
@@ -153,7 +165,7 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RobotS
 rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
 RobotSystem::on_deactivate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  RCLCPP_INFO(rclcpp::get_logger("RobotSystem"), "Successfully deactivated!");
+  RCLCPP_INFO(get_logger(), "Successfully deactivated!");
 
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
