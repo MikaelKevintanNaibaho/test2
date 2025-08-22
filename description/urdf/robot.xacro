@@ -8,6 +8,7 @@
     <xacro:include filename="$(find krsri2025)/urdf/coxa_link/coxa_link.xacro" />
     <xacro:include filename="$(find krsri2025)/urdf/femur_link/femur_link.xacro" />
     <xacro:include filename="$(find krsri2025)/urdf/tibia_link/tibia_link.xacro" />
+    <xacro:include filename="$(find krsri2025)/urdf/end_effector/end_effector.xacro" />
     <xacro:include filename="$(find krsri2025)/ros2_control/robot.ros2_control.xacro"/>
     <xacro:include filename="$(find krsri2025)/urdf/gz/gz.xacro" />
 
@@ -204,6 +205,12 @@
             xyz="0.0818 -7.74e-17 7.1e-18" />
         <axis xyz="0 0 1" />
     </xacro:tibia_link_v0>
+
+    <xacro:end_effector_link prefix="FL" parent="FL_tibia_link" xyz_offset="0.075 0.16952 -0.02273" />
+    <xacro:end_effector_link prefix="FR" parent="FR_tibia_link" xyz_offset="0.075 0.16952 -0.02273" />
+    <xacro:end_effector_link prefix="BR" parent="BR_tibia_link" xyz_offset="0.075 0.16952 -0.02273" />
+    <xacro:end_effector_link prefix="BL" parent="BL_tibia_link" xyz_offset="0.075 0.16952 -0.02273" />
+
 
     <!-- IMU-->
     <xacro:imu_v0 parent="base_link">
