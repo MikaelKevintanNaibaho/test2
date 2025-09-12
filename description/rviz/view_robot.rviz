@@ -109,6 +109,14 @@ Visualization Manager:
       Update Interval: 0
       Value: true
     - Alpha: 1
+      Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Namespaces:
+        foot_paths: true
+      Topic:
+        Value: /foot_swing_markers
+      Value: true
+    - Alpha: 1
       Class: rviz_default_plugins/RobotModel
       Collision Enabled: false
       Description File: ""
@@ -213,6 +221,7 @@ Visualization Manager:
       Value: true
       Visual Enabled: true
   Enabled: true
+  
   Global Options:
     Background Color: 45; 45; 45 # White background
     Fixed Frame: base_footprint

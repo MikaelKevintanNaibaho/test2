@@ -279,7 +279,14 @@ private:
     double swing_phase = phase_time / (gait_params_.total_gait_time / 2.0);
 
     Vec3<double> p_start = default_foot_positions.at(prefix);
-    Vec3<double> p_end = p_start + Vec3<double>(gait_params_.step_length, 0.0, 0.0);
+    // Adjust step_length based on leg prefix
+    double adjusted_step_length = gait_params_.step_length;
+    if (prefix == "FR" || prefix == "FL") {
+      adjusted_step_length = -gait_params_.step_length;
+    }
+    // FR and FL keep positive step_length (no change needed)
+
+    Vec3<double> p_end = p_start + Vec3<double>(adjusted_step_length, 0.0, 0.0);
 
     FootSwingTrajectory<double> trajectory;
     trajectory.setInitialPosition(p_start);
