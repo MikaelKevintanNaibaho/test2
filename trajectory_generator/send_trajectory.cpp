@@ -321,8 +321,12 @@ private:
 
     // Use CURRENT as seed for LMA (it's already close from prior step)
     KDL::JntArray q_out(current_joint_pos.rows());
+    RCLCPP_INFO(
+      this->get_logger(), "Target pose for %s: x=%.4f y=%.4f z=%.4f", prefix.c_str(),
+      target_pose.p.x(), target_pose.p.y(), target_pose.p.z());
 
     int ik_result = pos_ik_solvers_[prefix]->CartToJnt(current_joint_pos, target_pose, q_out);
+
 
     if (ik_result < 0) {
       RCLCPP_WARN(
