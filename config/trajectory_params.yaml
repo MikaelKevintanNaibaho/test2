@@ -4,7 +4,7 @@ send_trajectory:
       total_gait_time: 4.0
       step_length: 0.06
       swing_height: 0.02
-      trajectory_points: 300
+      trajectory_points: 100
 
     default_stance:
       FL:

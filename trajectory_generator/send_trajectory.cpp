@@ -1,8 +1,11 @@
 #include <kdl/chainfksolverpos_recursive.hpp>
+#include <kdl/chainiksolverpos_lma.hpp>
 #include <kdl/chainiksolvervel_pinv.hpp>
+#include <kdl/frameacc.hpp>
 #include <kdl/jntarray.hpp>
 #include <kdl/tree.hpp>
 #include <kdl_parser/kdl_parser.hpp>  // Fixed include path
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
@@ -104,9 +107,20 @@ private:
         return;
       }
       chains_[prefix] = chain;
-      ik_solvers_[prefix] =
-        std::make_shared<KDL::ChainIkSolverVel_pinv>(chains_[prefix], 0.0000001);
+      // Create position-based IK solver instead of velocity-based
       fk_solvers_[prefix] = std::make_shared<KDL::ChainFkSolverPos_recursive>(chains_[prefix]);
+
+      // Then create velocity IK solver
+      vel_ik_solvers_[prefix] =
+        std::make_shared<KDL::ChainIkSolverVel_pinv>(chains_[prefix], 0.0000001);
+
+      // Finally create position IK solver using the already-created FK solver
+      // _eps_joints (joint delta threshold; higher = looser stop)
+      pos_ik_solvers_[prefix] = std::make_shared<KDL::ChainIkSolverPos_LMA>(
+        chains_[prefix],
+        1e-3,   // Less strict task-space accuracy
+        1000,   // More iterations
+        1e-2);  // Less strict joint delta
     }
   }
 
@@ -116,7 +130,7 @@ private:
     // Load default joint positions and compute foot positions
     auto default_joints = loadDefaultJoints();
     auto joint_positions = initializeJointPositions(default_joints);
-    auto default_foot_positions = computeDefaultFootPositions(joint_positions);
+    default_foot_poses_ = computeDefaultFootPositions(joint_positions);
 
     // Create trajectory message
     trajectory_msgs::msg::JointTrajectory trajectory_msg;
@@ -147,7 +161,7 @@ private:
         if (is_swing_leg) {
           processSwingLeg(
             prefix, current_time, is_phase_one, current_joint_pos, joint_velocities,
-            default_foot_positions, leg_paths);
+            default_foot_poses_, leg_paths);
         } else {
           processStanceLeg(joint_velocities);
         }
@@ -236,10 +250,10 @@ private:
   }
 
   // Computes the initial foot positions using forward kinematics.
-  std::map<std::string, Vec3<double>> computeDefaultFootPositions(
+  std::map<std::string, KDL::Frame> computeDefaultFootPositions(
     std::map<std::string, KDL::JntArray> & joint_positions)
   {
-    std::map<std::string, Vec3<double>> default_foot_positions;
+    std::map<std::string, KDL::Frame> default_foot_poses;
     for (const auto & prefix : leg_prefixes_) {
       KDL::Frame foot_pose;
       if (fk_solvers_[prefix]->JntToCart(joint_positions[prefix], foot_pose) < 0) {
@@ -247,14 +261,13 @@ private:
         rclcpp::shutdown();
         return {};
       }
-      default_foot_positions[prefix] =
-        Vec3<double>(foot_pose.p.x(), foot_pose.p.y(), foot_pose.p.z());
+      default_foot_poses[prefix] = foot_pose;
 
       RCLCPP_INFO(
         this->get_logger(), "%s foot position: x=%.4f y=%.4f z=%.4f", prefix.c_str(),
         foot_pose.p.x(), foot_pose.p.y(), foot_pose.p.z());
     }
-    return default_foot_positions;
+    return default_foot_poses;
   }
 
   // Populates the joint names in the trajectory message.
@@ -268,25 +281,22 @@ private:
   }
 
   // Calculates the trajectory for a swing leg.
+
   void processSwingLeg(
     const std::string & prefix, double current_time, bool is_phase_one,
     KDL::JntArray & current_joint_pos, KDL::JntArray & joint_velocities,
-    const std::map<std::string, Vec3<double>> & default_foot_positions,
+    const std::map<std::string, KDL::Frame> & default_foot_poses,
     std::map<std::string, std::vector<geometry_msgs::msg::Point>> & leg_paths)
   {
     double phase_time =
       is_phase_one ? current_time : (current_time - gait_params_.total_gait_time / 2.0);
     double swing_phase = phase_time / (gait_params_.total_gait_time / 2.0);
 
-    Vec3<double> p_start = default_foot_positions.at(prefix);
-    // Adjust step_length based on leg prefix
-    double adjusted_step_length = gait_params_.step_length;
-    if (prefix == "FR" || prefix == "FL") {
-      adjusted_step_length = -gait_params_.step_length;
-    }
-    // FR and FL keep positive step_length (no change needed)
+    const KDL::Frame & p_start_frame = default_foot_poses.at(prefix);
+    const KDL::Vector & p_start_vec = p_start_frame.p;
+    Vec3<double> p_start(p_start_vec.x(), p_start_vec.y(), p_start_vec.z());
 
-    Vec3<double> p_end = p_start + Vec3<double>(adjusted_step_length, 0.0, 0.0);
+    Vec3<double> p_end = p_start + Vec3<double>(gait_params_.step_length, 0.0, 0.0);
 
     FootSwingTrajectory<double> trajectory;
     trajectory.setInitialPosition(p_start);
@@ -294,21 +304,55 @@ private:
     trajectory.setHeight(gait_params_.swing_height);
     trajectory.computeSwingTrajectoryBezier(swing_phase, gait_params_.total_gait_time / 2.0);
 
+    // Desired Cartesian pos & vel
     Vec3<double> cart_pos_vec = trajectory.getPosition();
     Vec3<double> cart_vel_vec = trajectory.getVelocity();
-    KDL::Twist cart_twist(
-      KDL::Vector(cart_vel_vec[0], cart_vel_vec[1], cart_vel_vec[2]), KDL::Vector::Zero());
 
-    // NEW: Store the calculated cartesian point
     geometry_msgs::msg::Point p;
     p.x = cart_pos_vec[0];
     p.y = cart_pos_vec[1];
     p.z = cart_pos_vec[2];
     leg_paths[prefix].push_back(p);
 
-    ik_solvers_[prefix]->CartToJnt(current_joint_pos, cart_twist, joint_velocities);
-  }
+    // Target pose (position only, orientation fixed) — FIXED TYPO: y is pos, not vel
+    KDL::Frame target_pose;
+    target_pose.p = KDL::Vector(cart_pos_vec[0], cart_pos_vec[1], cart_pos_vec[2]);
+    target_pose.M = p_start_frame.M;
 
+    // Use CURRENT as seed for LMA (it's already close from prior step)
+    KDL::JntArray q_out(current_joint_pos.rows());
+
+    int ik_result = pos_ik_solvers_[prefix]->CartToJnt(current_joint_pos, target_pose, q_out);
+
+    if (ik_result < 0) {
+      RCLCPP_WARN(
+        this->get_logger(), "IK (pos_LMA) failed for %s leg at time %.3f (phase=%.3f)",
+        prefix.c_str(), current_time, swing_phase);
+      // Optional: Log residual for debug (add after CartToJnt if you extend the solver)
+      for (unsigned int j = 0; j < joint_velocities.rows(); j++) {
+        joint_velocities(j) = 0.0;
+      }
+      return;
+    }
+
+    // SUCCESS: Snap position to target (eliminates drift)
+    current_joint_pos = q_out;
+
+    // Compute velocities AT THE SNAPPED POSITION (matches Bézier tangent exactly)
+    KDL::Twist cart_twist(
+      KDL::Vector(cart_vel_vec[0], cart_vel_vec[1], cart_vel_vec[2]), KDL::Vector::Zero());
+    int ik_vel_result =
+      vel_ik_solvers_[prefix]->CartToJnt(current_joint_pos, cart_twist, joint_velocities);
+
+    if (ik_vel_result < 0) {
+      RCLCPP_WARN(
+        this->get_logger(), "IK (vel) failed for %s leg at time %.3f", prefix.c_str(),
+        current_time);
+      for (unsigned int j = 0; j < joint_velocities.rows(); j++) {
+        joint_velocities(j) = 0.0;
+      }
+    }
+  }
   // Sets the velocity for a stance leg to zero.
   void processStanceLeg(KDL::JntArray & joint_velocities)
   {
@@ -368,9 +412,11 @@ private:
   GaitParams gait_params_;
   std::vector<std::string> leg_prefixes_ = {"FL", "FR", "BL", "BR"};
   std::string base_link_ = "base_link";
+  std::map<std::string, KDL::Frame> default_foot_poses_;
 
   std::map<std::string, KDL::Chain> chains_;
-  std::map<std::string, std::shared_ptr<KDL::ChainIkSolverVel_pinv>> ik_solvers_;
+  std::map<std::string, std::shared_ptr<KDL::ChainIkSolverPos_LMA>> pos_ik_solvers_;
+  std::map<std::string, std::shared_ptr<KDL::ChainIkSolverVel_pinv>> vel_ik_solvers_;
   std::map<std::string, std::shared_ptr<KDL::ChainFkSolverPos_recursive>> fk_solvers_;
 };
 

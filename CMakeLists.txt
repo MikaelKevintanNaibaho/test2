@@ -29,6 +29,8 @@ set (CONTROLLER_INCLUDE_DEPENDS
   trajectory_msgs
 )
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Specify the required version of ros2_control
 find_package(controller_manager 4.0.0 REQUIRED)
 # Handle the case where the required version is not found
