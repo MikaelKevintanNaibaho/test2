@@ -28,7 +28,6 @@ set (REF_GEN_INCLUDE_DEPENDS
   moveit_planners_ompl
   tf2_eigen
   tf2_ros
-  robot_model_loader
 )
 
 set (CONTROLLER_INCLUDE_DEPENDS
@@ -73,11 +72,13 @@ target_link_libraries(send_trajectory PUBLIC
   ${visualization_msgs_TARGETS}
   ${geometry_msgs_TARGETS}
   ${moveit_msgs_TARGETS}
-  moveit_ros_planning_interface::moveit_ros_planning_interface
-  moveit_visual_tools::moveit_visual_tools
-  moveit_core::moveit_core
-  moveit_ros_planning::moveit_ros_planning
- )
+  moveit_msgs
+  moveit_core
+  moveit_ros_planning_interface
+  moveit_visual_tools
+  moveit_ros_planning
+  moveit_ros_move_group_interface
+)
 
 target_include_directories(send_trajectory PRIVATE
   ${PROJECT_SOURCE_DIR}/trajectory_generator/include
