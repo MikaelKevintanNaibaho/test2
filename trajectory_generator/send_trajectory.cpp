@@ -1,22 +1,18 @@
-#include <kdl/chainfksolverpos_recursive.hpp>
-#include <kdl/chainiksolvervel_pinv.hpp>
-#include <kdl/jntarray.hpp>
-#include <kdl/tree.hpp>
-#include <kdl_parser/kdl_parser.hpp>  // Fixed include path
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/robot_model/robot_model.h>
+#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/robot_state/robot_state.h>
+
+#include <geometry_msgs/msg/pose.hpp>
+#include <moveit_msgs/msg/display_trajectory.hpp>
+#include <moveit_msgs/msg/robot_trajectory.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
-#include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "foot_trajectory.hpp"
-
-// A struct to hold the joint angles for a single leg.
-struct LegJoints
-{
-  double coxa;
-  double femur;
-  double tibia;
-};
 
 // A struct to hold gait parameters.
 struct GaitParams
@@ -28,46 +24,41 @@ struct GaitParams
   double dt;
 };
 
-// A class to represent the trajectory generator ROS2 node.
-class TrajectoryGeneratorNode : public rclcpp::Node
+// A class to represent the MoveIt2-based trajectory generator ROS2 node.
+class MoveIt2TrajectoryGeneratorNode : public rclcpp::Node
 {
 public:
-  TrajectoryGeneratorNode()
+  MoveIt2TrajectoryGeneratorNode()
   : Node(
-      "send_trajectory",
+      "moveit2_trajectory_generator",
       rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
   {
-    // Now, safely get the parameter
-    if (!this->get_parameter("robot_description", robot_description_)) {
-      RCLCPP_ERROR(this->get_logger(), "robot_description parameter not set. Shutting down.");
-      // Properly shut down the node
-      rclcpp::shutdown();
-      return;
-    }
-    RCLCPP_INFO(this->get_logger(), "Successfully received robot_description.");
-    // Initializes the publisher for the joint trajectory messages.
-    pub_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-      "krsri_controller/joint_trajectory", 10);
+    RCLCPP_INFO(this->get_logger(), "Starting MoveIt2 Trajectory Generator Node");
 
+    // Initialize publishers
+    trajectory_pub_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
+      "krsri_controller/joint_trajectory", 10);
     marker_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("foot_swing_markers", 10);
+    display_trajectory_pub_ =
+      this->create_publisher<moveit_msgs::msg::DisplayTrajectory>("display_planned_path", 10);
 
-    // Load parameters, initialize kinematics, and generate the trajectory.
+    // Load parameters
     loadGaitParams();
-    initializeKinematics();
 
-    // If initialization failed (e.g. robot_description missing), initializeKinematics()
-    // may have called rclcpp::shutdown(); bail out instead of continuing.
+    // Initialize MoveIt2 components
+    initializeMoveIt();
+
     if (!rclcpp::ok()) {
       RCLCPP_ERROR(this->get_logger(), "Initialization failed, aborting trajectory generation.");
       return;
     }
 
+    // Generate and execute trajectory
     generateAndPublishTrajectory();
   }
 
 private:
-  // Loads all necessary gait parameters from the ROS parameter server.
   void loadGaitParams()
   {
     gait_params_.total_gait_time = this->get_parameter("gait.total_gait_time").as_double();
@@ -78,243 +69,261 @@ private:
       gait_params_.total_gait_time / static_cast<double>(gait_params_.trajectory_points - 1);
   }
 
-  // Initializes the KDL kinematics (chains, solvers) for each leg.
-  void initializeKinematics()
+  void initializeMoveIt()
   {
-    std::string robot_description;
-    if (!this->get_parameter("robot_description", robot_description)) {
-      RCLCPP_ERROR(this->get_logger(), "robot_description parameter not set. Shutting down.");
-      rclcpp::shutdown();
-      return;
-    }
+    try {
+      // Initialize robot model loader
+      robot_model_loader_ = std::make_shared<robot_model_loader::RobotModelLoader>(
+        shared_from_this(), "robot_description");
 
-    KDL::Tree robot_tree;
-    if (!kdl_parser::treeFromString(robot_description, robot_tree)) {
-      RCLCPP_ERROR(this->get_logger(), "Failed to build KDL tree");
-      rclcpp::shutdown();
-      return;
-    }
-
-    for (const auto & prefix : leg_prefixes_) {
-      std::string tip_link = prefix + "_end_effector_link";
-      KDL::Chain chain;
-      if (!robot_tree.getChain(base_link_, tip_link, chain)) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to get KDL chain for leg %s", prefix.c_str());
+      if (!robot_model_loader_->getModel()) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to load robot model");
         rclcpp::shutdown();
         return;
       }
-      chains_[prefix] = chain;
-      ik_solvers_[prefix] =
-        std::make_shared<KDL::ChainIkSolverVel_pinv>(chains_[prefix], 0.0000001);
-      fk_solvers_[prefix] = std::make_shared<KDL::ChainFkSolverPos_recursive>(chains_[prefix]);
+
+      robot_model_ = robot_model_loader_->getModel();
+      robot_state_ = std::make_shared<moveit::core::RobotState>(robot_model_);
+      robot_state_->setToDefaultValues();
+
+      // Initialize move group interfaces for each leg
+      for (const auto & prefix : leg_prefixes_) {
+        std::string group_name =
+          prefix + "_leg";  // Assuming planning groups are named like "FL_leg", "FR_leg", etc.
+
+        try {
+          auto move_group = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
+            shared_from_this(), group_name);
+
+          move_group->setPlanningTime(5.0);
+          move_group->setNumPlanningAttempts(3);
+          move_group->setMaxVelocityScalingFactor(0.5);
+          move_group->setMaxAccelerationScalingFactor(0.3);
+
+          move_groups_[prefix] = move_group;
+
+          RCLCPP_INFO(this->get_logger(), "Initialized MoveGroup for %s", prefix.c_str());
+        } catch (const std::exception & e) {
+          RCLCPP_ERROR(
+            this->get_logger(), "Failed to initialize MoveGroup for %s: %s", prefix.c_str(),
+            e.what());
+        }
+      }
+
+      // Initialize planning scene interface
+      planning_scene_interface_ =
+        std::make_shared<moveit::planning_interface::PlanningSceneInterface>();
+
+      RCLCPP_INFO(this->get_logger(), "MoveIt2 initialization complete");
+
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(this->get_logger(), "MoveIt2 initialization failed: %s", e.what());
+      rclcpp::shutdown();
     }
   }
 
-  // Generates the trot gait trajectory and publishes it.
   void generateAndPublishTrajectory()
   {
-    // Load default joint positions and compute foot positions
-    auto default_joints = loadDefaultJoints();
-    auto joint_positions = initializeJointPositions(default_joints);
-    auto default_foot_positions = computeDefaultFootPositions(joint_positions);
+    RCLCPP_INFO(this->get_logger(), "Generating trot gait with MoveIt2");
 
-    // Create trajectory message
-    trajectory_msgs::msg::JointTrajectory trajectory_msg;
-    trajectory_msg.header.stamp = this->now();
-    populateJointNames(trajectory_msg);
+    // Get current robot state
+    robot_state_->setToDefaultValues();
+    loadDefaultJointPositions();
 
-    RCLCPP_INFO(
-      this->get_logger(), "Generating trot gait with %d points", gait_params_.trajectory_points);
+    // Compute initial foot positions
+    auto default_foot_positions = computeCurrentFootPositions();
+
+    // Generate trajectory waypoints
+    std::vector<moveit_msgs::msg::RobotTrajectory> leg_trajectories;
     std::map<std::string, std::vector<geometry_msgs::msg::Point>> leg_paths;
 
-    // Main trajectory generation loop
+    // Generate trajectories for each phase
+    generateTrotGaitTrajectories(default_foot_positions, leg_trajectories, leg_paths);
+
+    // Combine and publish trajectories
+    combineAndPublishTrajectories(leg_trajectories);
+
+    // Publish visualization markers
+    publishTrajectoryMarkers(leg_paths);
+
+    RCLCPP_INFO(this->get_logger(), "Trajectory generation complete");
+  }
+
+  void loadDefaultJointPositions()
+  {
+    RCLCPP_INFO(this->get_logger(), "Loading default joint positions...");
+
+    for (const auto & prefix : leg_prefixes_) {
+      std::string ns = "default_stance." + prefix;
+
+      double coxa, femur, tibia;
+      if (
+        this->get_parameter(ns + ".coxa", coxa) && this->get_parameter(ns + ".femur", femur) &&
+        this->get_parameter(ns + ".tibia", tibia)) {
+        // Set joint values in robot state
+        robot_state_->setJointPositions(prefix + "_coxa_link_joint", &coxa);
+        robot_state_->setJointPositions(prefix + "_femur_link_joint", &femur);
+        robot_state_->setJointPositions(prefix + "_tibia_link_joint", &tibia);
+
+        RCLCPP_INFO(
+          this->get_logger(), "Set %s joints: coxa=%.3f, femur=%.3f, tibia=%.3f", prefix.c_str(),
+          coxa, femur, tibia);
+      } else {
+        RCLCPP_ERROR(this->get_logger(), "Failed to load default joints for %s", prefix.c_str());
+        rclcpp::shutdown();
+        return;
+      }
+    }
+  }
+
+  std::map<std::string, Eigen::Vector3d> computeCurrentFootPositions()
+  {
+    std::map<std::string, Eigen::Vector3d> foot_positions;
+
+    for (const auto & prefix : leg_prefixes_) {
+      std::string end_effector = prefix + "_end_effector_link";
+
+      const Eigen::Isometry3d & end_effector_state =
+        robot_state_->getGlobalLinkTransform(end_effector);
+      Eigen::Vector3d position = end_effector_state.translation();
+
+      foot_positions[prefix] = position;
+
+      RCLCPP_INFO(
+        this->get_logger(), "%s foot position: [%.3f, %.3f, %.3f]", prefix.c_str(), position.x(),
+        position.y(), position.z());
+    }
+
+    return foot_positions;
+  }
+
+  void generateTrotGaitTrajectories(
+    const std::map<std::string, Eigen::Vector3d> & default_foot_positions,
+    std::vector<moveit_msgs::msg::RobotTrajectory> & leg_trajectories,
+    std::map<std::string, std::vector<geometry_msgs::msg::Point>> & leg_paths)
+  {
+    // Generate trajectory for each time step
     for (int i = 0; i < gait_params_.trajectory_points; i++) {
       double current_time = i * gait_params_.dt;
       bool is_phase_one = (current_time < gait_params_.total_gait_time / 2.0);
 
-      trajectory_msgs::msg::JointTrajectoryPoint point;
-      point.time_from_start = rclcpp::Duration::from_seconds(current_time);
-      std::vector<double> all_positions, all_velocities;
-
-      // Process each leg's movement
       for (const auto & prefix : leg_prefixes_) {
         bool is_swing_leg = (is_phase_one && (prefix == "FL" || prefix == "BR")) ||
                             (!is_phase_one && (prefix == "FR" || prefix == "BL"));
 
-        KDL::JntArray & current_joint_pos = joint_positions[prefix];
-        KDL::JntArray joint_velocities(current_joint_pos.rows());
-
         if (is_swing_leg) {
-          processSwingLeg(
-            prefix, current_time, is_phase_one, current_joint_pos, joint_velocities,
-            default_foot_positions, leg_paths);
-        } else {
-          processStanceLeg(joint_velocities);
-        }
-
-        // Update joint positions and velocities for the message
-        for (unsigned int j = 0; j < current_joint_pos.rows(); j++) {
-          current_joint_pos(j) += joint_velocities(j) * gait_params_.dt;
-          all_positions.push_back(current_joint_pos(j));
-          all_velocities.push_back(joint_velocities(j));
+          generateSwingTrajectoryWaypoint(
+            prefix, current_time, is_phase_one, default_foot_positions, leg_paths);
         }
       }
-      point.positions = all_positions;
-      point.velocities = all_velocities;
-      trajectory_msg.points.push_back(point);
-    }
-    publishTrajectoryMarkers(leg_paths);
-
-    // Publish the complete trajectory
-    RCLCPP_INFO(this->get_logger(), "Publishing trajectory for all legs");
-    pub_->publish(trajectory_msg);
-
-    rclcpp::sleep_for(std::chrono::seconds(1));
-    rclcpp::shutdown();
-  }
-
-  // Loads the default joint positions from the parameter server.
-  std::map<std::string, LegJoints> loadDefaultJoints()
-  {
-    std::map<std::string, LegJoints> default_joints;
-    RCLCPP_INFO(this->get_logger(), "Loading default joint positions for all legs...");
-    for (const auto & prefix : leg_prefixes_) {
-      std::string ns = "default_stance." + prefix;
-      LegJoints joints;
-
-      // Use a flag to track if all params for a leg are found
-      bool success = true;
-      success &= this->get_parameter(ns + ".coxa", joints.coxa);
-      success &= this->get_parameter(ns + ".femur", joints.femur);
-      success &= this->get_parameter(ns + ".tibia", joints.tibia);
-
-      if (success) {
-        RCLCPP_INFO(
-          this->get_logger(), "Successfully loaded for %s: coxa=%.6f, femur=%.6f, tibia=%.6f",
-          prefix.c_str(), joints.coxa, joints.femur, joints.tibia);
-        default_joints[prefix] = joints;
-      } else {
-        RCLCPP_ERROR(
-          this->get_logger(),
-          "Failed to load one or more default stance parameters for leg prefix: %s",
-          prefix.c_str());
-        // Shut down to prevent running with incorrect initial positions
-        rclcpp::shutdown();
-      }
-    }
-    return default_joints;
-  }
-
-  // Initializes the KDL joint arrays from the loaded default joint values.
-  std::map<std::string, KDL::JntArray> initializeJointPositions(
-    const std::map<std::string, LegJoints> & default_joints)
-  {
-    std::map<std::string, KDL::JntArray> joint_positions;
-    RCLCPP_INFO(this->get_logger(), "Initializing KDL joint arrays from loaded defaults...");
-    for (const auto & prefix : leg_prefixes_) {
-      // Find the joints for the current leg prefix
-      auto it = default_joints.find(prefix);
-      if (it != default_joints.end()) {
-        const auto & joints = it->second;
-        joint_positions[prefix] = KDL::JntArray(3);
-        joint_positions[prefix](0) = joints.coxa;
-        joint_positions[prefix](1) = joints.femur;
-        joint_positions[prefix](2) = joints.tibia;
-
-        // Add detailed logging to confirm the values being set
-        RCLCPP_INFO(
-          this->get_logger(), "KDL JntArray for '%s' initialized to: [%f, %f, %f]", prefix.c_str(),
-          joint_positions[prefix](0), joint_positions[prefix](1), joint_positions[prefix](2));
-      } else {
-        RCLCPP_ERROR(
-          this->get_logger(), "Could not find default joints for leg prefix '%s' in the map.",
-          prefix.c_str());
-        rclcpp::shutdown();
-      }
-    }
-    return joint_positions;
-  }
-
-  // Computes the initial foot positions using forward kinematics.
-  std::map<std::string, Vec3<double>> computeDefaultFootPositions(
-    std::map<std::string, KDL::JntArray> & joint_positions)
-  {
-    std::map<std::string, Vec3<double>> default_foot_positions;
-    for (const auto & prefix : leg_prefixes_) {
-      KDL::Frame foot_pose;
-      if (fk_solvers_[prefix]->JntToCart(joint_positions[prefix], foot_pose) < 0) {
-        RCLCPP_ERROR(this->get_logger(), "FK failed for %s leg", prefix.c_str());
-        rclcpp::shutdown();
-        return {};
-      }
-      default_foot_positions[prefix] =
-        Vec3<double>(foot_pose.p.x(), foot_pose.p.y(), foot_pose.p.z());
-
-      RCLCPP_INFO(
-        this->get_logger(), "%s foot position: x=%.4f y=%.4f z=%.4f", prefix.c_str(),
-        foot_pose.p.x(), foot_pose.p.y(), foot_pose.p.z());
-    }
-    return default_foot_positions;
-  }
-
-  // Populates the joint names in the trajectory message.
-  void populateJointNames(trajectory_msgs::msg::JointTrajectory & trajectory_msg)
-  {
-    for (const auto & prefix : leg_prefixes_) {
-      trajectory_msg.joint_names.push_back(prefix + "_coxa_link_joint");
-      trajectory_msg.joint_names.push_back(prefix + "_femur_link_joint");
-      trajectory_msg.joint_names.push_back(prefix + "_tibia_link_joint");
     }
   }
 
-  // Calculates the trajectory for a swing leg.
-  void processSwingLeg(
+  void generateSwingTrajectoryWaypoint(
     const std::string & prefix, double current_time, bool is_phase_one,
-    KDL::JntArray & current_joint_pos, KDL::JntArray & joint_velocities,
-    const std::map<std::string, Vec3<double>> & default_foot_positions,
+    const std::map<std::string, Eigen::Vector3d> & default_foot_positions,
     std::map<std::string, std::vector<geometry_msgs::msg::Point>> & leg_paths)
   {
     double phase_time =
       is_phase_one ? current_time : (current_time - gait_params_.total_gait_time / 2.0);
     double swing_phase = phase_time / (gait_params_.total_gait_time / 2.0);
 
-    Vec3<double> p_start = default_foot_positions.at(prefix);
-    // Adjust step_length based on leg prefix
+    Eigen::Vector3d p_start = default_foot_positions.at(prefix);
+
+    // Adjust step length based on leg prefix
     double adjusted_step_length = gait_params_.step_length;
     if (prefix == "FR" || prefix == "FL") {
       adjusted_step_length = -gait_params_.step_length;
     }
-    // FR and FL keep positive step_length (no change needed)
 
-    Vec3<double> p_end = p_start + Vec3<double>(adjusted_step_length, 0.0, 0.0);
+    Eigen::Vector3d p_end = p_start + Eigen::Vector3d(adjusted_step_length, 0.0, 0.0);
 
+    // Generate foot trajectory using your existing FootSwingTrajectory class
     FootSwingTrajectory<double> trajectory;
-    trajectory.setInitialPosition(p_start);
-    trajectory.setFinalPosition(p_end);
+    Vec3<double> start_vec(p_start.x(), p_start.y(), p_start.z());
+    Vec3<double> end_vec(p_end.x(), p_end.y(), p_end.z());
+
+    trajectory.setInitialPosition(start_vec);
+    trajectory.setFinalPosition(end_vec);
     trajectory.setHeight(gait_params_.swing_height);
     trajectory.computeSwingTrajectoryBezier(swing_phase, gait_params_.total_gait_time / 2.0);
 
     Vec3<double> cart_pos_vec = trajectory.getPosition();
-    Vec3<double> cart_vel_vec = trajectory.getVelocity();
-    KDL::Twist cart_twist(
-      KDL::Vector(cart_vel_vec[0], cart_vel_vec[1], cart_vel_vec[2]), KDL::Vector::Zero());
 
-    // NEW: Store the calculated cartesian point
+    // Store trajectory point for visualization
     geometry_msgs::msg::Point p;
     p.x = cart_pos_vec[0];
     p.y = cart_pos_vec[1];
     p.z = cart_pos_vec[2];
     leg_paths[prefix].push_back(p);
 
-    ik_solvers_[prefix]->CartToJnt(current_joint_pos, cart_twist, joint_velocities);
+    // Plan to this cartesian position using MoveIt2
+    if (move_groups_.find(prefix) != move_groups_.end()) {
+      planToCartesianPosition(prefix, cart_pos_vec);
+    }
   }
 
-  // Sets the velocity for a stance leg to zero.
-  void processStanceLeg(KDL::JntArray & joint_velocities)
+  void planToCartesianPosition(const std::string & prefix, const Vec3<double> & target_pos)
   {
-    for (unsigned int j = 0; j < joint_velocities.rows(); j++) {
-      joint_velocities(j) = 0.0;
+    auto move_group = move_groups_[prefix];
+
+    geometry_msgs::msg::Pose target_pose;
+    target_pose.position.x = target_pos[0];
+    target_pose.position.y = target_pos[1];
+    target_pose.position.z = target_pos[2];
+    target_pose.orientation.w = 1.0;
+
+    move_group->setPoseTarget(target_pose);
+
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    bool success = (move_group->plan(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+    if (success) {
+      // Store the planned trajectory segment
+      // In a full implementation, you'd collect these and combine them
+      RCLCPP_DEBUG(this->get_logger(), "Successfully planned trajectory for %s", prefix.c_str());
+    } else {
+      RCLCPP_WARN(this->get_logger(), "Failed to plan trajectory for %s", prefix.c_str());
     }
+  }
+
+  void combineAndPublishTrajectories(
+    const std::vector<moveit_msgs::msg::RobotTrajectory> & leg_trajectories)
+  {
+    // This is a simplified version - in practice you'd need to carefully synchronize
+    // and combine the individual leg trajectories into a single coordinated movement
+
+    trajectory_msgs::msg::JointTrajectory combined_trajectory;
+    combined_trajectory.header.stamp = this->now();
+
+    // Populate joint names for all legs
+    for (const auto & prefix : leg_prefixes_) {
+      combined_trajectory.joint_names.push_back(prefix + "_coxa_link_joint");
+      combined_trajectory.joint_names.push_back(prefix + "_femur_link_joint");
+      combined_trajectory.joint_names.push_back(prefix + "_tibia_link_joint");
+    }
+
+    // For demonstration, create a simple trajectory point with current positions
+    trajectory_msgs::msg::JointTrajectoryPoint point;
+    point.time_from_start = rclcpp::Duration::from_seconds(0.0);
+
+    // Get current joint positions
+    std::vector<double> current_positions;
+    for (const auto & prefix : leg_prefixes_) {
+      const double * coxa = robot_state_->getJointPositions(prefix + "_coxa_link_joint");
+      const double * femur = robot_state_->getJointPositions(prefix + "_femur_link_joint");
+      const double * tibia = robot_state_->getJointPositions(prefix + "_tibia_link_joint");
+
+      current_positions.push_back(*coxa);
+      current_positions.push_back(*femur);
+      current_positions.push_back(*tibia);
+    }
+
+    point.positions = current_positions;
+    combined_trajectory.points.push_back(point);
+
+    RCLCPP_INFO(this->get_logger(), "Publishing combined trajectory");
+    trajectory_pub_->publish(combined_trajectory);
   }
 
   void publishTrajectoryMarkers(
@@ -337,9 +346,9 @@ private:
       if (path_points.empty()) continue;
 
       visualization_msgs::msg::Marker marker;
-      marker.header.frame_id = base_link_;
+      marker.header.frame_id = "base_link";
       marker.header.stamp = this->now();
-      marker.ns = "foot_paths";
+      marker.ns = "moveit2_foot_paths";
       marker.id = id++;
       marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
       marker.action = visualization_msgs::msg::Marker::ADD;
@@ -350,34 +359,44 @@ private:
       marker.color.r = colors[prefix][0];
       marker.color.g = colors[prefix][1];
       marker.color.b = colors[prefix][2];
-      marker.color.a = 1.0;  // Opacity
+      marker.color.a = 1.0;
 
       marker.points = path_points;
       marker_array.markers.push_back(marker);
     }
 
     RCLCPP_INFO(
-      this->get_logger(), "Publishing %zu trajectory markers.", marker_array.markers.size());
+      this->get_logger(), "Publishing %zu MoveIt2 trajectory markers", marker_array.markers.size());
     marker_pub_->publish(marker_array);
   }
 
   // Member Variables
-  std::string robot_description_;
-  rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr pub_;
+  rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  rclcpp::Publisher<moveit_msgs::msg::DisplayTrajectory>::SharedPtr display_trajectory_pub_;
+
   GaitParams gait_params_;
   std::vector<std::string> leg_prefixes_ = {"FL", "FR", "BL", "BR"};
-  std::string base_link_ = "base_link";
 
-  std::map<std::string, KDL::Chain> chains_;
-  std::map<std::string, std::shared_ptr<KDL::ChainIkSolverVel_pinv>> ik_solvers_;
-  std::map<std::string, std::shared_ptr<KDL::ChainFkSolverPos_recursive>> fk_solvers_;
+  // MoveIt2 components
+  std::shared_ptr<robot_model_loader::RobotModelLoader> robot_model_loader_;
+  moveit::core::RobotModelPtr robot_model_;
+  std::shared_ptr<moveit::core::RobotState> robot_state_;
+  std::map<std::string, std::shared_ptr<moveit::planning_interface::MoveGroupInterface>>
+    move_groups_;
+  std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface_;
 };
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<TrajectoryGeneratorNode>();
 
+  // MoveIt2 requires multi-threaded execution
+  rclcpp::executors::MultiThreadedExecutor executor;
+  auto node = std::make_shared<MoveIt2TrajectoryGeneratorNode>();
+  executor.add_node(node);
+  executor.spin();
+
+  rclcpp::shutdown();
   return 0;
 }

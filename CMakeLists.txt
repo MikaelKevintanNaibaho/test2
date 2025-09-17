@@ -7,6 +7,8 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_visual_tools REQUIRED)
 
 # find dependecies
 set (HW_IF_INCLUDE_DEPENDS
@@ -16,9 +18,17 @@ set (HW_IF_INCLUDE_DEPENDS
 )
 
 set (REF_GEN_INCLUDE_DEPENDS
-  kdl_parser
   rclcpp
   trajectory_msgs
+  moveit_core
+  moveit_ros_planning
+  moveit_ros_planning_interface
+  moveit_visual_tools
+  moveit_ros_move_group
+  moveit_planners_ompl
+  tf2_eigen
+  tf2_ros
+  robot_model_loader
 )
 
 set (CONTROLLER_INCLUDE_DEPENDS
@@ -59,10 +69,15 @@ add_executable(send_trajectory
 
 target_link_libraries(send_trajectory PUBLIC
   ${trajectory_msgs_TARGETS}
-  kdl_parser::kdl_parser
   rclcpp::rclcpp
   ${visualization_msgs_TARGETS}
-)
+  ${geometry_msgs_TARGETS}
+  ${moveit_msgs_TARGETS}
+  moveit_ros_planning_interface::moveit_ros_planning_interface
+  moveit_visual_tools::moveit_visual_tools
+  moveit_core::moveit_core
+  moveit_ros_planning::moveit_ros_planning
+ )
 
 target_include_directories(send_trajectory PRIVATE
   ${PROJECT_SOURCE_DIR}/trajectory_generator/include
